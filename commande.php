@@ -1,41 +1,59 @@
 <?php
-// Inclure la connexion à la base de données
-include 'connect_db.php';
+include "connect_db.php";
 
-// Vérifier si le formulaire a été soumis
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    // Récupérer les valeurs du formulaire
+// Récupérer les données du formulaire si elles existent
+// Supposons que vous ayez une fonction pour insérer la commande
+function insererCommande($qtyCommande) {
+    // Vérifier si une commande avec la même quantité existe déjà
+    $resultat = $db->query("SELECT * FROM commandes WHERE qty_commande = $qtyCommande");
+
+    if ($resultat->num_rows > 0) {
+        // Une commande avec cette quantité existe déjà
+        return "Commande déjà enregistrée.";
+    }
+
+    // Si la commande n'existe pas, on peut l'insérer
+    $db->query("INSERT INTO commandes (qty_commande) VALUES ($qtyCommande)");
+
+    return "Commande enregistrée avec succès!";
+}
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && !empty($_POST)) {
     $type_produit = $_POST['type_produit'];
-    $prix_unitaire = $_POST['prix_unitaire'];
+    $prix_produit = $_POST['prix_produit'];
     $quantite_disponible = $_POST['quantite_disponible'];
     $qty_commande = $_POST['qty_commande'];
+    $date_commande = date("Y-m-d H:i:s"); // Générer la date actuelle
 
-    // Vérifier si la quantité commandée est valide par rapport à la quantité disponible
-    if ($qty_commande > $quantite_disponible) {
-        echo "La quantité commandée dépasse la quantité disponible.";
-        exit;
-    }
-
-    // Insérer la commande dans la table `commandes`
-    $sql = "INSERT INTO `commande`( `type_produit`, `prix_unitaire`,
-     `date_commande`, `qty_commande`)VALUES ('$type_produit','$prix_unitaire',
-     '$date_commande','$qty_commande')";
-    $stmt = $pdo->prepare($sql);
-
-    // Exécuter la requête
-    try {
-        $stmt->execute([
-            ':type_produit' => $type_produit,
-            ':prix_produit' => $prix_produit,
-            ':qty_commande' => $qty_commande
-        ]);
-
-        echo "Commande enregistrée avec succès !";
-    } catch (PDOException $e) {
-        echo "Erreur lors de l'enregistrement de la commande : " . $e->getMessage();
-    }
+    // Vérification si tous les champs sont remplis
+    if ($type_produit && $prix_produit && $quantite_disponible && $qty_commande) {
+        // Requête pour insérer les données dans la base
+        if ($qty_commande > $quantite_disponible) {
+            echo "<p style='color:red;'>La quantité commandée ne peut pas dépasser la quantité disponible.</p>";
+        } else {
+            // Procéder à l'insertion
+            $sql = "INSERT INTO `commande` (`type_produit`, `prix_produit`, `date_commande`, `quantite_disponible`, `qty_commande`)
+                    VALUES ('$type_produit', '$prix_produit', '$date_commande', '$quantite_disponible', '$qty_commande')";
+            $result = mysqli_query($conn, $sql);
+        }
+        
+        
+        $result = mysqli_query($conn, $sql);
+        
+        if ($result) {
+            // Rediriger vers la même page avec un message de succès (les champs seront réinitialisés)
+            header("Location: commande.php?msg=Commande enregistrée avec succès");
+            exit;
+        } else {
+            // Afficher une erreur en cas d'échec
+            echo "Erreur : " . mysqli_error($conn);
+        }
+    } 
 }
 ?>
+
+
+
 
 
 
@@ -49,6 +67,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Formulaire de commande</title>
+    
     <!-- bootstrap -->
     <link rel="stylesheet" href="css/bootstrap-grid.css">
     <link rel="stylesheet" href="css/bootstrap-grid.css.map">
@@ -110,7 +129,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
     </style>
 </head>
-<body>
+<body>        
+    
+
     <!-- MENU -->
     <div class="container my-5" id="menu">
         <h1 class="akali text-center mb-5">MENU</h1>
@@ -273,6 +294,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body">
+                        <!-- Message de confirmation caché par défaut -->
+                        <div id="confirmationMessage" class="alert alert-success" style="display: none;">
+                            Votre commande a été passée avec succès !
+                        </div>
                         <form id="commandeForm" action=""  method="POST">
                             <!-- Affichage du type de produit (lecture seule) -->
                             <div class="mb-3">
@@ -294,65 +319,89 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                                 <label for="qty_commande" class="form-label">Quantité commandée</label>
                                 <input type="number" class="form-control" id="qty_commande" name="qty_commande" min="1" required>
                             </div>
-                            <button type="submit" class="btn btn-success">Passer la commande</button>
+                            <button type="submit" class="btn btn-success" id="submitButton" name="submit">Passer la commande</button>
                         </form>
                     </div>
                 </div>
             </div>
         </div>
+        <div id="alertMessage" class="alert alert-danger alert-dismissible fade show alert-container" role="alert" style="display: none;">
+            La quantité commandée ne doit pas dépasser la quantité disponible.
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        
+
     <script>
+        
         // Script pour remplir les champs du formulaire avec les informations du produit sélectionné
+        
         const formCommandeModal = document.getElementById('formCommandeModal');
-        formCommandeModal.addEventListener('show.bs.modal', function (event) {
-            // Bouton qui a déclenché l'ouverture du modal
-            const button = event.relatedTarget;
+        formCommandeModal.addEventListener('show.bs.modal', function(event) {
+        // Réinitialisation du champ "quantité commandée"
+        document.getElementById('qty_commande').value = ''; // Vide le champ
         
-            // Récupération des informations du produit
-            const typeProduit = button.getAttribute('data-type');
-            const prixProduit = button.getAttribute('data-prix');
-            const quantiteDisponible = button.getAttribute('data-quantite');
-        
-            // Remplissage des champs du formulaire avec les informations du produit
-            document.getElementById('type_produit').value = typeProduit;
-            document.getElementById('prix_produit').value = prixProduit;
-            document.getElementById('quantite_disponible').value = quantiteDisponible;
-        });
-        
-        document.getElementById('commandeForm').addEventListener('submit', function(event) {
-        event.preventDefault(); // Empêche le rechargement de la page
+        // Récupération des données du bouton sur lequel on a cliqué
+        const button = event.relatedTarget; // Le bouton qui a ouvert le modal
+        const typeProduit = button.getAttribute('data-type');
+        const prixProduit = button.getAttribute('data-prix');
+        const quantiteDisponible = button.getAttribute('data-quantite');
 
-        // Création de l'objet FormData pour récupérer les données du formulaire
-        let formData = new FormData(this);
+        // Remplir le formulaire avec ces valeurs
+        document.getElementById('type_produit').value = typeProduit;
+        document.getElementById('prix_produit').value = prixProduit;
+        document.getElementById('quantite_disponible').value = quantiteDisponible;
+    });
 
+
+        
+    document.getElementById('commandeForm').addEventListener('submit', async function(event) {
+    event.preventDefault(); // Empêche le rechargement de la page
+
+    // const submitButton = document.getElementById('submitButton');
+    // submitButton.disabled = true;
+
+    // Récupérer les valeurs du formulaire
+    const qtyCommande = document.getElementById('qty_commande').value;
+    const quantiteDisponible = document.getElementById('quantite_disponible').value;
+
+    // Vérifier si la quantité commandée dépasse la quantité disponible
+    if (parseInt(qtyCommande) > parseInt(quantiteDisponible)) {
+        // Afficher un message d'erreur si la quantité commandée dépasse la quantité disponible
+        alert("La quantité commandée ne doit pas dépasser la quantité disponible.");
+        return; // Arrêter l'envoi du formulaire
+    }
+
+    // Création de l'objet FormData pour récupérer les données du formulaire
+    let formData = new FormData(this);
+
+    try {
         // Envoi des données via AJAX
-        fetch('traiter_commande.php', {
+        const response = await fetch('commande.php', {
             method: 'POST',
             body: formData
-        })
-        .then(response => response.text())
-        .then(responseText => {
-            console.log(responseText);
-
-            // Réinitialise le formulaire
-            document.getElementById('commandeForm').reset();
-
-            // Ferme le modal après la soumission
-            let formModal = new bootstrap.Modal(document.getElementById('formCommandeModal'));
-            formModal.hide();
-        })
-        .catch(error => {
-            console.error('Erreur:', error);
         });
-    });
+        const responseText = await response.text();
+
+        console.log(responseText);
+
+        // Afficher le message de confirmation centré
+        const confirmationMessage = document.getElementById('confirmationMessage');
+        confirmationMessage.style.display = 'block';
+
+        // Optionnel : masquer le message après quelques secondes
+        setTimeout(() => {
+            confirmationMessage.style.display = 'none';
+        }, 3000); // 3000 ms = 3 secondes
+
+    } catch (error) {
+        console.error('Erreur:', error);
+    }
+});
+
     
     </script>
 
-        
-        
     </div>
-    
-
-    
 
     <script src="js/bootstrap.bundle.js"></script>
     <script src="js/bootstrap.bundle.js.map"></script>
